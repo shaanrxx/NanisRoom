@@ -1,0 +1,344 @@
+:root {
+    --bg-color: #1a1412;
+    --accent-gold: #d4af37;
+    --warm-cream: #f4f0ea;
+    --text-dark: #2c221e;
+    --modal-bg: #fffbf7;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--warm-cream);
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Room Container with Background Image */
+.room-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    
+    /* Make sure this points to your file correctly! */
+    background-image: url('./assets/room-bg.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+/* Subtle dark overlay so the room background feels atmospheric and text pops */
+.room-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(26, 20, 18, 0.25);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Header & Progress Tracker */
+.room-header {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    margin-top: 20px;
+    background: rgba(26, 20, 18, 0.7);
+    padding: 10px 25px;
+    border-radius: 30px;
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    backdrop-filter: blur(4px);
+}
+
+.room-header h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2rem;
+    color: var(--accent-gold);
+    font-weight: 600;
+}
+
+.room-header p {
+    font-size: 0.85rem;
+    opacity: 0.85;
+}
+
+/* Interactive Space covering the full screen */
+.interactive-space {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+}
+
+/* Hotspot Markers */
+.hotspot {
+    position: absolute;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+}
+
+.pulse-ring {
+    display: block;
+    width: 28px;
+    height: 28px;
+    background: var(--accent-gold);
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.7);
+    animation: pulse 2s infinite;
+}
+
+.hotspot-label {
+    position: absolute;
+    top: 35px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(26, 20, 18, 0.95);
+    color: var(--warm-cream);
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    pointer-events: none;
+}
+
+.hotspot:hover .hotspot-label {
+    opacity: 1;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.7);
+    }
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 14px rgba(212, 175, 55, 0);
+    }
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(212, 175, 55, 0);
+    }
+}
+
+/* Modal Popup Window */
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(5px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+
+.modal-content {
+    background: var(--modal-bg);
+    color: var(--text-dark);
+    width: 90%;
+    max-width: 500px;
+    padding: 30px;
+    border-radius: 8px;
+    position: relative;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    border-top: 4px solid var(--accent-gold);
+}
+
+.close-btn {
+    position: absolute;
+    top: 12px;
+    right: 18px;
+    background: none;
+    border: none;
+    font-size: 1.8rem;
+    cursor: pointer;
+    color: var(--text-dark);
+}
+
+.modal-content h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.8rem;
+    margin-bottom: 12px;
+    color: #4a3832;
+}
+
+.modal-content p {
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+.archive-shell,
+.room-stage,
+.room-stage > div {
+    width: 100%;
+    height: 100%;
+}
+
+.archive-shell {
+    position: relative;
+    overflow: hidden;
+    color: #f4e9d8;
+    background: #241a1c;
+}
+
+.room-stage {
+    position: absolute;
+    inset: 0;
+}
+
+.archive-header {
+    position: absolute;
+    top: clamp(1.5rem, 5vw, 4rem);
+    left: clamp(1.25rem, 6vw, 6rem);
+    z-index: 2;
+    pointer-events: none;
+    text-align: left;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+}
+
+.archive-kicker,
+.memory-eyebrow {
+    color: #ffb877;
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.archive-header h1 {
+    margin: 0.35rem 0 0.2rem;
+    color: #f4e9d8;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: clamp(2.6rem, 6vw, 5.7rem);
+    font-weight: 600;
+    line-height: 0.9;
+}
+
+.archive-prompt,
+.archive-hint {
+    color: rgba(244, 233, 216, 0.75);
+    font-size: 0.78rem;
+}
+
+.archive-hint {
+    position: absolute;
+    right: clamp(1.25rem, 5vw, 5rem);
+    bottom: 1.6rem;
+    z-index: 2;
+    margin: 0;
+    letter-spacing: 0.04em;
+}
+
+.audio-controller {
+    position: absolute;
+    top: clamp(1.5rem, 5vw, 4rem);
+    right: clamp(1.25rem, 5vw, 5rem);
+    z-index: 3;
+}
+
+.audio-controller button,
+.return-btn {
+    border: 1px solid rgba(255, 184, 119, 0.6);
+    border-radius: 999px;
+    background: rgba(36, 26, 28, 0.58);
+    color: #f4e9d8;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    padding: 0.65rem 1rem;
+}
+
+.audio-controller button:hover,
+.audio-controller button:focus-visible,
+.return-btn:hover,
+.return-btn:focus-visible {
+    background: #ffb877;
+    color: #241a1c;
+    outline: none;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: grid;
+    place-items: center;
+    padding: 1.25rem;
+    background: rgba(19, 13, 14, 0.72);
+    backdrop-filter: blur(8px);
+}
+
+.memory-modal {
+    position: relative;
+    width: min(100%, 31rem);
+    padding: clamp(2rem, 6vw, 3.5rem);
+    border-top: 3px solid #d4af6a;
+    background: #f8f0e4;
+    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.35);
+    color: #2c221e;
+    text-align: left;
+}
+
+.memory-modal h2 {
+    margin: 0.65rem 0 1rem;
+    color: #4a3832;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: clamp(2rem, 6vw, 3rem);
+    font-weight: 600;
+    line-height: 0.95;
+}
+
+.memory-body {
+    color: #5c4a43;
+    font-size: 0.95rem;
+    line-height: 1.75;
+}
+
+.close-btn {
+    position: absolute;
+    top: 0.7rem;
+    right: 1rem;
+    border: 0;
+    background: transparent;
+    color: #4a3832;
+    cursor: pointer;
+    font-size: 1.8rem;
+    line-height: 1;
+}
+
+.return-btn {
+    margin-top: 1.5rem;
+    border-color: #87664f;
+    background: transparent;
+    color: #4a3832;
+}
+
+@media (max-width: 620px) {
+    .archive-header h1 { font-size: 3rem; }
+    .archive-hint { bottom: 1rem; left: 1.25rem; right: auto; }
+    .audio-controller button { padding: 0.55rem 0.75rem; }
+}
