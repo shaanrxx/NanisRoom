@@ -729,7 +729,7 @@ function App() {
       </div>
       <header className="archive-header">
         <p className="archive-kicker">A digital memory archive</p>
-        <h1>Auntie's Room</h1>
+        <h1>Nani's Room</h1>
         <p className="archive-prompt">Explore the room and listen closely.</p>
       </header>
       <div className="audio-controller">
