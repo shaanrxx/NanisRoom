@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Rozha+One&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap');
+
 :root {
     --bg-color: #1a1412;
     --accent-gold: #d4af37;
@@ -19,6 +21,196 @@ body {
     width: 100vw;
     height: 100vh;
     overflow: hidden;
+}
+
+/* =========================
+   SPLASH SCREEN
+========================= */
+
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background:
+    radial-gradient(
+      circle at 50% 40%,
+      rgba(216, 138, 149, 0.12),
+      transparent 45%
+    ),
+    #362a2d;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash-content {
+  text-align: center;
+  max-width: 520px;
+  padding: 2rem;
+  animation: splashFadeIn 1.2s ease forwards;
+}
+
+.splash-kicker {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.25em;
+  color: #d4af6a;
+  margin-bottom: 1.5rem;
+}
+
+.splash-content h1 {
+  font-family: 'Rozha One', serif;
+  font-size: clamp(3.5rem, 9vw, 7rem);
+  font-weight: 400;
+  margin: 0;
+  color: #f4e9d8;
+  line-height: 0.9;
+  letter-spacing: 0.01em;
+}
+
+.splash-description {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: rgba(244, 233, 216, 0.7);
+  line-height: 1.7;
+  max-width: 380px;
+  margin: 2rem auto;
+}
+
+.enter-room-btn {
+  background: transparent;
+  border: 1px solid #d4af6a;
+  color: #f4e9d8;
+  padding: 0.9rem 1.5rem;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background 0.3s ease,
+    color 0.3s ease,
+    transform 0.3s ease;
+}
+
+.enter-room-btn:hover {
+  background: #d4af6a;
+  color: #362a2d;
+  transform: translateY(-2px);
+}
+
+.enter-room-btn span {
+  margin-left: 0.8rem;
+}
+
+.splash-small {
+  margin-top: 2rem;
+  font-size: 0.7rem;
+  color: rgba(244, 233, 216, 0.4);
+  letter-spacing: 0.08em;
+}
+
+@keyframes splashFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* =========================
+   ABOUT BUTTON
+========================= */
+
+.top-controls {
+  position: fixed;
+  top: clamp(1.5rem, 5vw, 4rem);
+  right: clamp(1.25rem, 5vw, 5rem);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.glass-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  background: rgba(54, 42, 45, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  border: 1px solid rgba(212, 175, 106, 0.4);
+  color: #f4e9d8;
+
+  padding: 0.65rem 1.15rem;
+  border-radius: 999px;
+  cursor: pointer;
+
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.3s ease, background 0.3s ease,
+    box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.glass-btn:hover,
+.glass-btn:focus-visible {
+  border-color: rgba(212, 175, 106, 0.9);
+  background: rgba(54, 42, 45, 0.78);
+  box-shadow: 0 8px 26px rgba(212, 175, 106, 0.28);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.about-btn::before {
+  content: '✦';
+  color: #d4af6a;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.mode-toggle-btn {
+  width: 2.7rem;
+  height: 2.7rem;
+  padding: 0;
+  justify-content: center;
+  font-size: 1.05rem;
+}
+
+.mode-toggle-btn span {
+  transition: transform 0.4s ease;
+}
+
+.mode-toggle-btn:hover span {
+  transform: rotate(20deg) scale(1.1);
+}
+
+
+/* =========================
+   ABOUT MODAL
+========================= */
+
+.about-modal {
+  position: relative;
+
+  width: min(90vw, 520px);
+  padding: 3rem;
+
+  background: #362a2d;
+  border: 1px solid rgba(212, 175, 106, 0.4);
+
+  color: #f4e9d8;
+
+  box-shadow:
+    0 20px 80px rgba(0, 0, 0, 0.45);
 }
 
 /* Room Container with Background Image */
@@ -217,6 +409,12 @@ body {
     pointer-events: none;
     text-align: left;
     text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+    opacity: 1;
+    transition: opacity 1.6s ease;
+}
+
+.archive-header.is-fading {
+    opacity: 0;
 }
 
 .archive-kicker,
@@ -250,16 +448,14 @@ body {
     z-index: 2;
     margin: 0;
     letter-spacing: 0.04em;
+    opacity: 1;
+    transition: opacity 1.6s ease;
 }
 
-.audio-controller {
-    position: absolute;
-    top: clamp(1.5rem, 5vw, 4rem);
-    right: clamp(1.25rem, 5vw, 5rem);
-    z-index: 3;
+.archive-hint.is-fading {
+    opacity: 0;
 }
 
-.audio-controller button,
 .return-btn {
     border: 1px solid rgba(255, 184, 119, 0.6);
     border-radius: 999px;
@@ -272,8 +468,6 @@ body {
     padding: 0.65rem 1rem;
 }
 
-.audio-controller button:hover,
-.audio-controller button:focus-visible,
 .return-btn:hover,
 .return-btn:focus-visible {
     background: #ffb877;
@@ -330,15 +524,63 @@ body {
     line-height: 1;
 }
 
-.return-btn {
-    margin-top: 1.5rem;
-    border-color: #87664f;
-    background: transparent;
-    color: #4a3832;
+/* =========================
+   REFLECTION SCREEN
+   Shown once the room has emptied, the lamp has fallen,
+   and the lights have gone out.
+========================= */
+
+.reflect-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+    background: radial-gradient(
+        circle at 50% 38%,
+        rgba(216, 138, 149, 0.08),
+        transparent 55%
+      ),
+      rgba(4, 3, 5, 0.55);
+    animation: reflectFadeIn 2.2s ease forwards;
+}
+
+.reflect-content {
+    max-width: 34rem;
+    text-align: center;
+    padding: 1rem;
+}
+
+.reflect-content h2 {
+    margin: 0.7rem 0 1.4rem;
+    color: #f4e9d8;
+    font-family: 'Rozha One', 'Cormorant Garamond', Georgia, serif;
+    font-size: clamp(2rem, 5.5vw, 3.2rem);
+    font-weight: 400;
+    line-height: 1.05;
+}
+
+.reflect-body {
+    color: rgba(244, 233, 216, 0.8);
+    font-size: 0.98rem;
+    line-height: 1.85;
+    margin-bottom: 1.4rem;
+}
+
+.reflect-content .return-btn {
+    margin-top: 0.6rem;
+    display: inline-block;
+}
+
+@keyframes reflectFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 @media (max-width: 620px) {
     .archive-header h1 { font-size: 3rem; }
     .archive-hint { bottom: 1rem; left: 1.25rem; right: auto; }
-    .audio-controller button { padding: 0.55rem 0.75rem; }
+    .glass-btn { padding: 0.55rem 0.85rem; font-size: 0.68rem; }
+    .mode-toggle-btn { width: 2.4rem; height: 2.4rem; }
 }

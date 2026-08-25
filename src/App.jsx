@@ -4,21 +4,125 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import './App.css';
 
 /**
+ * Lighting/atmosphere values for each time-of-day mode.
+ * Only intensities, colors and opacities differ — geometry never rebuilds.
+ */
+function getModeConfig(mode) {
+  if (mode === 'day') {
+    return {
+      background: 0xcfc0ac,
+      fogColor: 0xcfc0ac,
+      fogDensity: 0.014,
+      windowColor: 0xfff3d6,
+      windowIntensity: 19,
+      ambientColor: 0x9a8a7e,
+      ambientIntensity: 2.5,
+      hemiSky: 0xfff6e8,
+      hemiIntensity: 1.05,
+      paneColor: 0xffffff,
+      paneOpacity: 0.97,
+      moteOpacity: 0.4,
+      lampIntensity: 0.85,
+      standIntensity: 0.25,
+      vanityIntensity: 0.45,
+      fillIntensity: 0.55,
+      fill2Intensity: 0.3,
+    };
+  }
+  return {
+    background: 0x362a2d,
+    fogColor: 0x362a2d,
+    fogDensity: 0.028,
+    windowColor: 0xffc98f,
+    windowIntensity: 13,
+    ambientColor: 0x4a383c,
+    ambientIntensity: 1.7,
+    hemiSky: 0xf4e9d8,
+    hemiIntensity: 0.65,
+    paneColor: 0xffe2b3,
+    paneOpacity: 0.92,
+    moteOpacity: 0.75,
+    lampIntensity: 2.2,
+    standIntensity: 0.6,
+    vanityIntensity: 0.8,
+    fillIntensity: 1.0,
+    fill2Intensity: 0.5,
+  };
+}
+
+/**
+ * The room's arc once every keepsake has been found: furniture fades away,
+ * the standing lamp (the last light left) flickers and topples, and the
+ * room settles into near-darkness before the reflection screen appears.
+ * Only 'room' is interactive — the others just choreograph the scene.
+ */
+function getJourneyTargets(phase, modeCfg) {
+  switch (phase) {
+    case 'empty':
+      return {
+        decorOpacity: 0, decorScale: 0.82, lampFallAngle: 0,
+        lightMultiplier: 0.55, fogDensity: modeCfg.fogDensity * 1.7,
+        bgColor: modeCfg.background, shakeAmp: 0,
+      };
+    case 'distort':
+      return {
+        decorOpacity: 0, decorScale: 0.82, lampFallAngle: -1.3,
+        lightMultiplier: 0.05, fogDensity: 0.12,
+        bgColor: 0x08060a, shakeAmp: 0.045,
+      };
+    case 'reflect':
+      return {
+        decorOpacity: 0, decorScale: 0.82, lampFallAngle: -1.3,
+        lightMultiplier: 0.08, fogDensity: 0.1,
+        bgColor: 0x08060a, shakeAmp: 0,
+      };
+    default: // 'room'
+      return {
+        decorOpacity: 1, decorScale: 1, lampFallAngle: 0,
+        lightMultiplier: 1, fogDensity: modeCfg.fogDensity,
+        bgColor: modeCfg.background, shakeAmp: 0,
+      };
+  }
+}
+
+/**
  * NanisRoom (aka Auntie's Room)
  * An immersive, ambient 3D scene with clickable objects.
  * Each interactive object carries a `key` matching the memories object below.
- * Clicking one calls onHotspotClick(key).
+ * Clicking one calls onHotspotClick(key). The 'radio' key is special-cased
+ * in App() to also start playing the shabad audio.
+ * `mode` ('day' | 'night') controls lighting/atmosphere only — pass it down
+ * from App and the scene relights itself without rebuilding geometry.
+ * `collectedKeys` marks which keepsakes have been found (they shrink away).
+ * `journeyPhase` ('room' | 'empty' | 'distort' | 'reflect') drives the
+ * closing sequence once everything has been collected.
  *
  * Requires: npm install three
  */
-function NanisRoom({ onHotspotClick, className, style }) {
+function NanisRoom({
+  onHotspotClick,
+  mode = 'night',
+  collectedKeys = [],
+  journeyPhase = 'room',
+  className,
+  style,
+}) {
   const mountRef = useRef(null);
   const onHotspotClickRef = useRef(onHotspotClick);
   onHotspotClickRef.current = onHotspotClick;
+  const sceneObjectsRef = useRef(null);
+  const lampBaseRef = useRef(getModeConfig(mode).lampIntensity);
+  const journeyPhaseRef = useRef(journeyPhase);
+  const collectedSetRef = useRef(new Set(collectedKeys));
+  const journeyLiveRef = useRef({
+    decorOpacity: 1, decorScale: 1, lampFallAngle: 0, lightMultiplier: 1, shakeAmp: 0,
+  });
 
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+
+    const cfg = getModeConfig(mode);
 
     // ---------- palette ----------
     const wallColor  = 0x4a373b;
@@ -31,8 +135,8 @@ function NanisRoom({ onHotspotClick, className, style }) {
 
     // ---------- core scene ----------
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x362a2d);
-    scene.fog = new THREE.FogExp2(0x362a2d, 0.028);
+    scene.background = new THREE.Color(cfg.background);
+    scene.fog = new THREE.FogExp2(cfg.fogColor, cfg.fogDensity);
 
     const camera = new THREE.PerspectiveCamera(55, mount.clientWidth / mount.clientHeight, 0.1, 100);
     camera.position.set(0, 1.6, 6.2);
@@ -92,10 +196,9 @@ function NanisRoom({ onHotspotClick, className, style }) {
 
     // ---------- window + light shaft ----------
     const windowGroup = new THREE.Group();
-    windowGroup.position.set(-2.4, 2.4, -roomSize / 2 + 0.02);
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x2c2022, roughness: 0.8 });
     windowGroup.add(new THREE.Mesh(new THREE.BoxGeometry(1.9, 2.3, 0.12), frameMat));
-    const paneMat = new THREE.MeshBasicMaterial({ color: 0xffe2b3, transparent: true, opacity: 0.92 });
+    const paneMat = new THREE.MeshBasicMaterial({ color: cfg.paneColor, transparent: true, opacity: cfg.paneOpacity });
     const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.0), paneMat);
     pane.position.z = 0.07;
     windowGroup.add(pane);
@@ -107,9 +210,11 @@ function NanisRoom({ onHotspotClick, className, style }) {
     const barH = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.04, 0.02), frameMat);
     barH.position.set(0, 0, 0.08);
     windowGroup.add(barH);
+    windowGroup.scale.setScalar(1.2);
+    windowGroup.position.set(-2.4, 2.4, -roomSize / 2 + 0.02);
     scene.add(windowGroup);
 
-    const windowLight = new THREE.SpotLight(amber, 13, 16, Math.PI / 6.2, 0.5, 1.1);
+    const windowLight = new THREE.SpotLight(cfg.windowColor, cfg.windowIntensity, 16, Math.PI / 6, 0.5, 1.1);
     windowLight.position.set(-2.4, 3.4, -roomSize / 2 + 1.2);
     windowLight.target.position.set(0.4, 0, 1.2);
     windowLight.castShadow = true;
@@ -136,74 +241,139 @@ function NanisRoom({ onHotspotClick, className, style }) {
     }
     const moteGeo = new THREE.BufferGeometry();
     moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
-    const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({
-      color: cream, size: 0.02, transparent: true, opacity: 0.75,
+    const motesMat = new THREE.PointsMaterial({
+      color: cream, size: 0.02, transparent: true, opacity: cfg.moteOpacity,
       blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
+    });
+    const motes = new THREE.Points(moteGeo, motesMat);
     scene.add(motes);
 
     // ---------- ambient / fill light ----------
-    scene.add(new THREE.AmbientLight(0x4a383c, 1.7));
-    scene.add(new THREE.HemisphereLight(0xf4e9d8, floorColor, 0.65));
-    const fill = new THREE.PointLight(teal, 1.0, 9);
+    const ambientLight = new THREE.AmbientLight(cfg.ambientColor, cfg.ambientIntensity);
+    scene.add(ambientLight);
+    const hemisphereLight = new THREE.HemisphereLight(cfg.hemiSky, floorColor, cfg.hemiIntensity);
+    scene.add(hemisphereLight);
+    const fill = new THREE.PointLight(teal, cfg.fillIntensity, 9);
     fill.position.set(2.5, 1.6, 2.5);
     scene.add(fill);
-    const fill2 = new THREE.PointLight(rose, 0.5, 8);
+    const fill2 = new THREE.PointLight(rose, cfg.fill2Intensity, 8);
     fill2.position.set(-2.5, 1.4, 2.2);
     scene.add(fill2);
 
-    // ---------- lamp + side table ----------
-    const lampGroup = new THREE.Group();
-    const lampBaseMat = new THREE.MeshStandardMaterial({ color: 0x2c2022, roughness: 0.6 });
-    const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.08, 20), lampBaseMat);
-    const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 10), lampBaseMat);
-    lampPole.position.y = 0.49;
-    const lampShade = new THREE.Mesh(
-      new THREE.ConeGeometry(0.32, 0.4, 20, 1, true),
-      new THREE.MeshStandardMaterial({ color: rose, emissive: 0x6b3a2e, emissiveIntensity: 0.7, side: THREE.DoubleSide, roughness: 0.6 })
-    );
-    lampShade.position.y = 1.0;
-    lampGroup.add(lampBase, lampPole, lampShade);
-    lampGroup.position.set(2.6, 0.66, -1.6);
-    scene.add(lampGroup);
-    const lampLight = new THREE.PointLight(0xffd7ab, 1.8, 5, 2);
-    lampLight.position.set(2.6, 1.05, -1.6);
-    scene.add(lampLight);
+    // ---------- lamp + bigger side table ----------
+    // ---------- standing floor lamp + side table ----------
+const lampGroup = new THREE.Group();
 
-    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.06, 24), floorMat);
-    table.position.set(2.6, 0.42, -1.6);
-    table.castShadow = true; table.receiveShadow = true;
-    const tableLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 12), floorMat);
-    tableLeg.position.set(2.6, 0.2, -1.6);
-    scene.add(table, tableLeg);
+const lampBaseMat = new THREE.MeshStandardMaterial({
+  color: 0x2c2022,
+  roughness: 0.6,
+  metalness: 0.15
+});
 
-    // ---------- rocking chair ----------
-    const chairGroup = new THREE.Group();
-    const chairMat = new THREE.MeshStandardMaterial({ color: 0x3a2825, roughness: 0.8 });
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.06, 0.6), chairMat);
-    seat.position.y = 0.55;
-    const back = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.7, 0.06), chairMat);
-    back.position.set(0, 0.9, -0.28);
-    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.6), chairMat);
-    armL.position.set(-0.3, 0.72, 0);
-    const armR = armL.clone(); armR.position.x = 0.3;
-    const legGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.55, 8);
-    const legFL = new THREE.Mesh(legGeo, chairMat); legFL.position.set(-0.26, 0.28, 0.26);
-    const legFR = legFL.clone(); legFR.position.x = 0.26;
-    const legBL = legFL.clone(); legBL.position.z = -0.26;
-    const legBR = legFR.clone(); legBR.position.z = -0.26;
-    const rockerCurve = new THREE.TorusGeometry(0.78, 0.02, 8, 24, Math.PI * 0.55);
-    const rockerL = new THREE.Mesh(rockerCurve, chairMat);
-    rockerL.rotation.z = Math.PI / 2 + 0.72;
-    rockerL.position.set(-0.26, 0.02, 0);
-    const rockerR = rockerL.clone(); rockerR.position.x = 0.26;
-    chairGroup.add(seat, back, armL, armR, legFL, legFR, legBL, legBR, rockerL, rockerR);
-    chairGroup.position.set(-1.0, 0, 1.4);
-    chairGroup.rotation.y = 0.5;
-    chairGroup.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    scene.add(chairGroup);
+// Large circular floor base
+const lampBase = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.28, 0.32, 0.08, 24),
+  lampBaseMat
+);
+lampBase.position.y = 0.04;
 
-    // ---------- plants ----------
+// Tall lamp pole
+const lampPole = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.035, 0.045, 2.7, 12),
+  lampBaseMat
+);
+lampPole.position.y = 1.38;
+
+// Small collar underneath shade
+const lampCollar = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.09, 0.09, 0.08, 16),
+  lampBaseMat
+);
+lampCollar.position.y = 2.72;
+
+// Large standing lampshade
+const lampShadeMat = new THREE.MeshStandardMaterial({
+  color: rose,
+  emissive: 0x6b3a2e,
+  emissiveIntensity: 0.7,
+  side: THREE.DoubleSide,
+  roughness: 0.65
+});
+
+const lampShade = new THREE.Mesh(
+  new THREE.ConeGeometry(0.42, 0.55, 24, 1, true),
+  lampShadeMat
+);
+
+lampShade.position.y = 3.0;
+
+// Slightly tilt the shade for a softer, domestic feel
+lampShade.rotation.z = -0.04;
+
+lampGroup.add(
+  lampBase,
+  lampPole,
+  lampCollar,
+  lampShade
+);
+
+// Position the lamp beside the table
+lampGroup.position.set(4.5, 0, 3.35);
+
+lampGroup.traverse((o) => {
+  if (o.isMesh) {
+    o.castShadow = true;
+    o.receiveShadow = true;
+  }
+});
+
+scene.add(lampGroup);
+
+// Warm light from the standing lamp
+const lampLight = new THREE.PointLight(
+  0xffd7ab,
+  lampBaseRef.current,
+  6,
+  2
+);
+
+
+
+lampLight.position.set(2.0, 2.65, -1.55);
+scene.add(lampLight);
+
+
+
+// ---------- side table ----------
+const tableRadius = 0.58;
+const tableMat = floorMat.clone();
+
+const table = new THREE.Mesh(
+  new THREE.CylinderGeometry(
+    tableRadius,
+    tableRadius,
+    0.07,
+    28
+  ),
+  tableMat
+);
+
+table.position.set(2.6, 0.44, -1.6);
+table.castShadow = true;
+table.receiveShadow = true;
+
+const tableLeg = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.06, 0.06, 0.4, 12),
+  tableMat
+);
+
+tableLeg.position.set(2.6, 0.2, -1.6);
+
+scene.add(table, tableLeg);
+
+const tableTopY = 0.44 + 0.035;
+
+    // ---------- plants, sized up a little ----------
     function makePlant(x, z, scale) {
       const g = new THREE.Group();
       const pot = new THREE.Mesh(
@@ -226,60 +396,27 @@ function NanisRoom({ onHotspotClick, className, style }) {
       g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       return g;
     }
-    scene.add(makePlant(3.4, 1.8, 1.0));
-    scene.add(makePlant(3.2, -3.0, 0.8));
+    const plant1 = makePlant(3.5, 1.9, 1.35);
+    const plant2 = makePlant(3.2, -3.0, 1.05);
+    scene.add(plant1, plant2);
 
-    // ---------- colourful woven rug ----------
-    function makeRugTexture() {
-      const c = document.createElement('canvas');
-      c.width = 256; c.height = 256;
-      const ctx = c.getContext('2d');
-      const colors = ['#d95d39', '#e8b13a', '#3a7d5c', '#4a6fa5', '#c98a83', '#f4e9d8'];
-      ctx.fillStyle = '#8a2e3a';
-      ctx.fillRect(0, 0, 256, 256);
-      for (let i = 0; i < 10; i++) {
-        ctx.fillStyle = colors[i % colors.length];
-        ctx.fillRect(0, i * 26, 256, 9);
-      }
-      ctx.strokeStyle = '#f4e9d8';
-      ctx.lineWidth = 5;
-      ctx.strokeRect(8, 8, 240, 240);
-      for (let x = 16; x < 256; x += 28) {
-        ctx.fillStyle = colors[(Math.floor(x / 28)) % colors.length];
-        ctx.beginPath();
-        ctx.moveTo(x, 8);
-        ctx.lineTo(x + 14, 22);
-        ctx.lineTo(x, 36);
-        ctx.lineTo(x - 14, 22);
-        ctx.closePath();
-        ctx.fill();
-      }
-      return new THREE.CanvasTexture(c);
-    }
-    const rug = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.6, 1.7),
-      new THREE.MeshStandardMaterial({ map: makeRugTexture(), roughness: 1 })
-    );
-    rug.rotation.x = -Math.PI / 2;
-    rug.rotation.z = -0.08;
-    rug.position.set(-0.4, 0.012, 1.0);
-    rug.receiveShadow = true;
-    scene.add(rug);
-
-    // ---------- bed, flush against the left wall ----------
+    // ---------- bed, bigger still, flush against the left wall, with an open
+    // drawer underneath spilling folded clothes ----------
     const bedGroup = new THREE.Group();
+    const bedWidth = 2.4;
+    const bedLength = 3.0;
     const bedFrameMat = new THREE.MeshStandardMaterial({ color: 0x4a3320, roughness: 0.7 });
-    const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.3, 2.2), bedFrameMat);
+    const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(bedWidth, 0.3, bedLength), bedFrameMat);
     bedFrame.position.y = 0.15;
-    const headboard = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 0.08), bedFrameMat);
-    headboard.position.set(0, 0.75, -1.06);
+    const headboard = new THREE.Mesh(new THREE.BoxGeometry(bedWidth, 0.9, 0.08), bedFrameMat);
+    headboard.position.set(0, 0.8, -bedLength / 2 + 0.04);
     const mattress = new THREE.Mesh(
-      new THREE.BoxGeometry(1.5, 0.2, 2.1),
+      new THREE.BoxGeometry(bedWidth - 0.1, 0.2, bedLength - 0.1),
       new THREE.MeshStandardMaterial({ color: 0xe8ddc7, roughness: 0.9 })
     );
     mattress.position.y = 0.4;
     const sheetMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.55, 2.15, 10, 10),
+      new THREE.PlaneGeometry(bedWidth - 0.05, bedLength - 0.05, 12, 12),
       new THREE.MeshStandardMaterial({ color: rose, roughness: 0.8, side: THREE.DoubleSide })
     );
     sheetMesh.rotation.x = -Math.PI / 2;
@@ -287,24 +424,127 @@ function NanisRoom({ onHotspotClick, className, style }) {
     const shPos = sheetMesh.geometry.attributes.position;
     for (let i = 0; i < shPos.count; i++) {
       const x = shPos.getX(i), y = shPos.getY(i);
-      shPos.setZ(i, Math.sin(x * 3 + y * 2) * 0.02);
+      shPos.setZ(i, Math.sin(x * 2.4 + y * 1.6) * 0.025);
     }
     sheetMesh.geometry.computeVertexNormals();
     const pillowMat = new THREE.MeshStandardMaterial({ color: 0xf4e9d8, roughness: 0.9 });
-    const pillow1 = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), pillowMat);
+    const pillow1 = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), pillowMat);
     pillow1.scale.set(1.4, 0.55, 1);
-    pillow1.position.set(-0.35, 0.58, -0.82);
+    pillow1.position.set(-0.55, 0.6, -bedLength / 2 + 0.35);
     const pillow2 = pillow1.clone();
-    pillow2.position.set(0.35, 0.58, -0.82);
+    pillow2.position.set(0.55, 0.6, -bedLength / 2 + 0.35);
     bedGroup.add(bedFrame, headboard, mattress, sheetMesh, pillow1, pillow2);
+
+    // open drawer underneath, pulled halfway out, with folded clothes spilling from it
+    const drawerMat = new THREE.MeshStandardMaterial({ color: 0x2c2018, roughness: 0.75 });
+    const drawerBox = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 1.1), drawerMat);
+    drawerBox.position.set(bedWidth / 2 + 0.05, 0.1, 0.9);
+    const drawerFrontMat = new THREE.MeshStandardMaterial({ color: 0x3a2818, roughness: 0.6 });
+    const drawerFront = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 1.14), drawerFrontMat);
+    drawerFront.position.set(bedWidth / 2 - 0.08, 0.1, 0.9);
+    bedGroup.add(drawerBox, drawerFront);
+    const clothColors = [rose, gold, 0x3a7d5c, 0x4a6fa5, cream, 0xd95d39];
+    for (let i = 0; i < 6; i++) {
+      const cloth = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 8, 6),
+        new THREE.MeshStandardMaterial({ color: clothColors[i % clothColors.length], roughness: 0.95 })
+      );
+      cloth.scale.set(1.3, 0.55, 1.15);
+      cloth.position.set(
+        bedWidth / 2 + 0.05 + (Math.random() - 0.5) * 0.14,
+        0.2 + Math.random() * 0.05,
+        0.4 + i * 0.16 + (Math.random() - 0.5) * 0.05
+      );
+      bedGroup.add(cloth);
+    }
+
     // rotate so the bed's length runs along the wall, headboard against it, then
     // slide the whole group so the headboard sits flush against the left wall (x = -5)
     bedGroup.rotation.y = Math.PI / 2;
-    bedGroup.position.set(-3.89, 0, -2.4);
+    bedGroup.position.set(-3.49, 0, -2.0);
     bedGroup.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(bedGroup);
 
-    // ---------- vanity with mirror ----------
+    // ---------- record player on a small stand, by the window ----------
+    const standGroup = new THREE.Group();
+    const standWoodMat = new THREE.MeshStandardMaterial({ color: 0x5a3d2b, roughness: 0.65 });
+    const standTop = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.05, 20), standWoodMat);
+    standTop.position.y = 0.62;
+    const standLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 10), standWoodMat);
+    standLeg.position.y = 0.3;
+    standGroup.add(standTop, standLeg);
+
+    const playerBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.48, 0.08, 0.38),
+      new THREE.MeshStandardMaterial({ color: 0x2c2022, roughness: 0.5 })
+    );
+    playerBody.position.y = 0.685;
+    const platter = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, 0.015, 28),
+      new THREE.MeshStandardMaterial({ color: 0x151212, roughness: 0.35, metalness: 0.3 })
+    );
+    platter.position.set(-0.06, 0.735, 0);
+    const platterLabel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.035, 0.035, 0.017, 16),
+      new THREE.MeshStandardMaterial({ color: rose, roughness: 0.5 })
+    );
+    platterLabel.position.set(-0.06, 0.736, 0);
+    const tonearmBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.015, 0.03, 10),
+      new THREE.MeshStandardMaterial({ color: gold, roughness: 0.4, metalness: 0.6 })
+    );
+    tonearmBase.position.set(0.16, 0.735, 0.13);
+    const tonearm = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.008, 0.008),
+      new THREE.MeshStandardMaterial({ color: gold, roughness: 0.4, metalness: 0.6 })
+    );
+    tonearm.position.set(0.09, 0.75, 0.07);
+    tonearm.rotation.y = 0.6;
+    standGroup.add(playerBody, platter, platterLabel, tonearmBase, tonearm);
+
+
+    // by the window, not where the chair used to be
+    standGroup.scale.setScalar(1.25);
+    standGroup.position.set(-1.3, 0, -3.6);
+    standGroup.rotation.y = 0.5;
+    standGroup.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(standGroup);
+    const standLight = new THREE.PointLight(0xffdca8, cfg.standIntensity, 3, 2);
+    standLight.position.set(-1.3, 1.2, -3.6);
+    scene.add(standLight);
+
+    // ---------- play arrow above record player ----------
+const playArrowGroup = new THREE.Group();
+
+const arrowMat = new THREE.MeshBasicMaterial({
+  color: rose,
+  transparent: true,
+  opacity: 0.95,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+
+// Triangle play icon
+const arrowShape = new THREE.Shape();
+arrowShape.moveTo(0, 0.16);
+arrowShape.lineTo(0, -0.16);
+arrowShape.lineTo(0.28, 0);
+arrowShape.closePath();
+
+const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
+const playArrow = new THREE.Mesh(arrowGeometry, arrowMat);
+
+playArrowGroup.add(playArrow);
+
+// Position above the record player
+playArrowGroup.position.set(-1.3, 1.65, -3.6);
+
+// Make it face the camera
+playArrowGroup.rotation.y = Math.PI;
+
+scene.add(playArrowGroup);
+
+    // ---------- vanity with mirror, sized up ----------
     const vanityGroup = new THREE.Group();
     const vanityWoodMat = new THREE.MeshStandardMaterial({ color: 0x6b4a34, roughness: 0.6 });
     const vanityTop = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.45), vanityWoodMat);
@@ -327,11 +567,12 @@ function NanisRoom({ onHotspotClick, className, style }) {
     );
     mirrorGlass.position.set(0, 1.15, -0.183);
     vanityGroup.add(mirrorFrame, mirrorGlass);
-    vanityGroup.position.set(3.7, 0, -3.4);
+    vanityGroup.scale.setScalar(1.25);
+    vanityGroup.position.set(3.75, 0, -3.55);
     vanityGroup.rotation.y = -0.4;
     scene.add(vanityGroup);
-    const vanityLight = new THREE.PointLight(0xffe4bf, 0.8, 3.5, 2);
-    vanityLight.position.set(3.7, 1.3, -3.2);
+    const vanityLight = new THREE.PointLight(0xffe4bf, cfg.vanityIntensity, 3.5, 2);
+    vanityLight.position.set(3.75, 1.5, -3.35);
     scene.add(vanityLight);
 
     // =========================================================
@@ -363,7 +604,7 @@ function NanisRoom({ onHotspotClick, className, style }) {
     function registerHotspot(root, key, glow) {
       root.userData.hotspotKey = key;
       root.traverse((o) => { o.userData.hotspotKey = key; });
-      hotspots.push({ root, glow, key, baseY: root.position.y });
+      hotspots.push({ root, glow, key, baseY: root.position.y, collected: false, vanishT: 0 });
     }
 
     // --- Jewellery box + bangles box, sitting together at the foot of the bed ---
@@ -373,7 +614,7 @@ function NanisRoom({ onHotspotClick, className, style }) {
     const jewelLid = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.03, 0.19), new THREE.MeshStandardMaterial({ color: gold, roughness: 0.4, metalness: 0.5 }));
     jewelLid.position.y = 0.085;
     jewelGroup.add(jewelBody, jewelLid);
-    jewelGroup.position.set(0.28, 0.585, 0.65); // local to bedGroup, foot of the bed
+    jewelGroup.position.set(0.45, 0.585, 1.05); // local to bedGroup, foot of the bed
     jewelGroup.rotation.y = 0.3;
     jewelGroup.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     const jewelGlow = addFloorGlow(jewelGroup, 0.2, gold);
@@ -397,7 +638,7 @@ function NanisRoom({ onHotspotClick, className, style }) {
       bangle.position.set((Math.random() - 0.5) * 0.05, i * 0.01, (Math.random() - 0.5) * 0.05);
       banglesGroup.add(bangle);
     }
-    banglesGroup.position.set(-0.26, 0.575, 0.62); // local to bedGroup, next to the jewellery box
+    banglesGroup.position.set(-0.45, 0.575, 1.02); // local to bedGroup, next to the jewellery box
     banglesGroup.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     const banglesGlow = addFloorGlow(banglesGroup, 0.18, rose);
     bedGroup.add(banglesGroup);
@@ -459,6 +700,7 @@ function NanisRoom({ onHotspotClick, className, style }) {
     const photoPic = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.5), new THREE.MeshStandardMaterial({ map: makePhotoTexture(), roughness: 0.85 }));
     photoPic.position.set(0, 0, 0.025);
     photoGroup.add(photoFrameMesh, photoPic);
+    photoGroup.scale.setScalar(1.15);
     photoGroup.position.set(roomSize / 2 - 0.06, 2.3, 1.0);
     photoGroup.rotation.y = -Math.PI / 2;
     photoGroup.traverse((o) => { if (o.isMesh) o.castShadow = true; });
@@ -500,46 +742,61 @@ function NanisRoom({ onHotspotClick, className, style }) {
     );
     paintingCanvas.position.z = 0.023;
     paintingGroup.add(paintingFrame, paintingCanvas);
-    paintingGroup.position.set(1.6, 2.5, -roomSize / 2 + 0.05);
+    paintingGroup.scale.setScalar(1.15);
+    paintingGroup.position.set(1.7, 2.55, -roomSize / 2 + 0.05);
     paintingGroup.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     const paintingGlow = addWallGlow(paintingGroup, 0.38, amber, 0.05);
     scene.add(paintingGroup);
     registerHotspot(paintingGroup, 'painting', paintingGlow);
 
-    // --- Saree: draped across the rocking chair ---
-    const sareeGroup = new THREE.Group();
-    const sareeMat = new THREE.MeshStandardMaterial({ color: 0x7e2735, roughness: 0.85, side: THREE.DoubleSide });
-    const sareeMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.55, 6, 6), sareeMat);
-    const sPos = sareeMesh.geometry.attributes.position;
-    for (let i = 0; i < sPos.count; i++) {
-      const x = sPos.getX(i);
-      sPos.setZ(i, Math.sin(x * 4) * 0.03);
+    // --- Photo albums: a leaning stack on the side table ---
+    const albumGroup = new THREE.Group();
+    const albumColors = [0x7e2735, 0x2c5450, 0x5a3a24, 0x4a6fa5, 0x8a5a3a, 0x6b4a34, 0x3a4a5c];
+    let stackY = 0;
+    for (let i = 0; i < 7; i++) {
+      const w = 0.32 + Math.random() * 0.04;
+      const d = 0.26 + Math.random() * 0.03;
+      const h = 0.035;
+      const album = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color: albumColors[i % albumColors.length], roughness: 0.7 })
+      );
+      album.position.set((Math.random() - 0.5) * 0.03, stackY + h / 2, (Math.random() - 0.5) * 0.03);
+      album.rotation.y = (Math.random() - 0.5) * 0.35;
+      albumGroup.add(album);
+      stackY += h + 0.002;
     }
-    sareeMesh.geometry.computeVertexNormals();
-    const zariTrim = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.05), new THREE.MeshStandardMaterial({ color: gold, roughness: 0.4, metalness: 0.4, side: THREE.DoubleSide }));
-    zariTrim.position.y = -0.25;
-    sareeGroup.add(sareeMesh, zariTrim);
-    sareeGroup.position.set(-1.0, 0.75, 1.62);
-    sareeGroup.rotation.set(-0.35, 0.5, 0.08);
-    sareeGroup.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    scene.add(sareeGroup);
-    const sareeFloorGlow = addFloorGlow(chairGroup, 0.5, rose);
-    registerHotspot(sareeGroup, 'saree', sareeFloorGlow);
+    // a couple leaning against the stack for a "lots of albums" feel
+    const leaningAlbum = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.035, 0.24),
+      new THREE.MeshStandardMaterial({ color: 0x9a5a4a, roughness: 0.7 })
+    );
+    leaningAlbum.position.set(0.24, 0.1, 0.03);
+    leaningAlbum.rotation.z = Math.PI / 2.3;
+    leaningAlbum.rotation.y = 0.4;
+    albumGroup.add(leaningAlbum);
+    albumGroup.position.set(2.85, tableTopY, -1.85); // world space, on the table
+    albumGroup.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    scene.add(albumGroup);
+    const albumGlow = addFloorGlow(albumGroup, 0.22, cream);
+    registerHotspot(albumGroup, 'photoAlbums', albumGlow);
 
-    // --- Cassette: sitting on the side table ---
-    const cassetteGroup = new THREE.Group();
-    const cassetteBody = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.14), new THREE.MeshStandardMaterial({ color: 0x201c1c, roughness: 0.5 }));
-    const reelMat = new THREE.MeshStandardMaterial({ color: 0xcfcfcf, roughness: 0.4 });
-    const reelL = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.032, 16), reelMat);
-    reelL.rotation.x = Math.PI / 2;
-    reelL.position.set(-0.05, 0.02, 0);
-    const reelR = reelL.clone(); reelR.position.x = 0.05;
-    cassetteGroup.add(cassetteBody, reelL, reelR);
-    cassetteGroup.position.set(2.5, 0.465, -1.72);
-    cassetteGroup.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    const cassetteGlow = addFloorGlow(cassetteGroup, 0.16, cream);
-    scene.add(cassetteGroup);
-    registerHotspot(cassetteGroup, 'cassette', cassetteGlow);
+    // --- Record player: the stand's turntable, plays a shabad on click ---
+    const radioGlow = addFloorGlow(standGroup, 0.34, teal);
+    registerHotspot(standGroup, 'radio', radioGlow);
+
+    // ---------- decor that fades away once every keepsake has been found ----------
+    // (the lamp is handled separately below — it stays lit and topples over
+    // instead of fading, as the "something falls" beat)
+    const decorGroups = [bedGroup, vanityGroup, table, tableLeg, plant1, plant2];
+    decorGroups.forEach((group) => {
+      group.traverse((o) => {
+        if (o.isMesh && o.material) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m) => { m.transparent = true; });
+        }
+      });
+    });
 
     // ---------- raycasting: click + hover ----------
     const raycaster = new THREE.Raycaster();
@@ -553,8 +810,10 @@ function NanisRoom({ onHotspotClick, className, style }) {
     }
 
     function pickHotspot() {
+      if (journeyPhaseRef.current !== 'room') return null;
       raycaster.setFromCamera(pointer, camera);
-      const targets = hotspots.map((h) => h.root);
+      const targets = hotspots.filter((h) => !h.collected).map((h) => h.root);
+      if (targets.length === 0) return null;
       const hits = raycaster.intersectObjects(targets, true);
       if (hits.length === 0) return null;
       let obj = hits[0].object;
@@ -590,10 +849,13 @@ function NanisRoom({ onHotspotClick, className, style }) {
 
     // ---------- animate ----------
     const clock = new THREE.Clock();
+    const journeyColor = new THREE.Color();
     let frameId;
     function animate() {
       frameId = requestAnimationFrame(animate);
       const t = clock.getElapsedTime();
+      const objs = sceneObjectsRef.current;
+      const phase = journeyPhaseRef.current;
 
       const pos = moteGeo.attributes.position.array;
       for (let i = 0; i < moteCount; i++) {
@@ -603,8 +865,20 @@ function NanisRoom({ onHotspotClick, className, style }) {
       }
       moteGeo.attributes.position.needsUpdate = true;
 
+      // ---------- keepsakes: idle pulse, or shrink away once collected ----------
       hotspots.forEach((h) => {
         if (!h.glow) return;
+        if (collectedSetRef.current.has(h.key)) h.collected = true;
+
+        if (h.collected) {
+          h.vanishT = Math.min(1, h.vanishT + 0.045);
+          const s = Math.max(1 - h.vanishT, 0.0001);
+          h.root.scale.setScalar(s);
+          h.glow.material.opacity = 0.5 * (1 - h.vanishT);
+          if (h.vanishT >= 1 && h.root.visible) h.root.visible = false;
+          return;
+        }
+
         const isHovered = h.key === hoveredKey;
         const pulse = 0.35 + Math.sin(t * 2.2 + h.baseY * 3) * 0.15;
         h.glow.material.opacity = isHovered ? 0.85 : pulse;
@@ -612,16 +886,106 @@ function NanisRoom({ onHotspotClick, className, style }) {
         h.glow.scale.set(s, s, s);
       });
 
-      lampLight.intensity = 1.8 + Math.sin(t * 7.0) * 0.03 + Math.sin(t * 2.3) * 0.02;
+      // ---------- the room's arc: furniture fades, the lamp falls, light dies ----------
+      if (objs) {
+        const jt = getJourneyTargets(phase, objs.modeCfg);
+        const live = journeyLiveRef.current;
+        const ease = 0.035;
+        live.decorOpacity = THREE.MathUtils.lerp(live.decorOpacity, jt.decorOpacity, ease);
+        live.decorScale = THREE.MathUtils.lerp(live.decorScale, jt.decorScale, ease);
+        live.lampFallAngle = THREE.MathUtils.lerp(live.lampFallAngle, jt.lampFallAngle, ease);
+        live.lightMultiplier = THREE.MathUtils.lerp(live.lightMultiplier, jt.lightMultiplier, ease);
+        live.shakeAmp = THREE.MathUtils.lerp(live.shakeAmp, jt.shakeAmp, ease);
 
-      controls.autoRotate = !hoveredKey;
+        decorGroups.forEach((group) => {
+          group.scale.setScalar(live.decorScale);
+          group.traverse((o) => {
+            if (o.isMesh && o.material) {
+              const mats = Array.isArray(o.material) ? o.material : [o.material];
+              mats.forEach((m) => { m.opacity = live.decorOpacity; });
+            }
+          });
+        });
+
+        lampGroup.rotation.z = live.lampFallAngle;
+
+        scene.fog.density = THREE.MathUtils.lerp(scene.fog.density, jt.fogDensity, ease);
+        journeyColor.set(jt.bgColor);
+        scene.background.lerp(journeyColor, ease);
+        scene.fog.color.lerp(journeyColor, ease);
+
+        const flicker = phase === 'distort'
+          ? 0.35 + 0.65 * Math.abs(Math.sin(t * 17) * Math.sin(t * 5))
+          : 1;
+        const radioGone = collectedSetRef.current.has('radio');
+
+        windowLight.intensity = objs.baseIntensities.window * live.lightMultiplier * flicker;
+        ambientLight.intensity = objs.baseIntensities.ambient * live.lightMultiplier;
+        hemisphereLight.intensity = objs.baseIntensities.hemi * live.lightMultiplier;
+        fill.intensity = objs.baseIntensities.fill * live.lightMultiplier;
+        fill2.intensity = objs.baseIntensities.fill2 * live.lightMultiplier;
+        standLight.intensity = radioGone ? 0 : objs.baseIntensities.stand * live.lightMultiplier;
+        vanityLight.intensity = objs.baseIntensities.vanity * live.lightMultiplier;
+
+        if (live.shakeAmp > 0.0006) {
+          camera.position.x += (Math.random() - 0.5) * live.shakeAmp;
+          camera.position.y += (Math.random() - 0.5) * live.shakeAmp * 0.6;
+          camera.position.z += (Math.random() - 0.5) * live.shakeAmp;
+        }
+      }
+
+          // Floating play arrow animation
+playArrowGroup.position.y = 1.65 + Math.sin(t * 2.5) * 0.06;
+playArrow.material.opacity = 0.65 + Math.sin(t * 2.5) * 0.2;
+playArrow.rotation.z = Math.sin(t * 1.5) * 0.04;
+
+      // gentle platter spin, purely decorative
+      platter.rotation.y += 0.01;
+      platterLabel.rotation.y += 0.01;
+
+      const lampChaos = phase === 'distort' ? (Math.random() - 0.5) * 1.1 : 0;
+      lampLight.intensity = Math.max(
+        0,
+        (lampBaseRef.current + Math.sin(t * 7.0) * 0.04 + Math.sin(t * 2.3) * 0.025)
+          * journeyLiveRef.current.lightMultiplier + lampChaos
+      );
+
+      controls.autoRotate = phase === 'room' && !hoveredKey;
       controls.update();
       renderer.render(scene, camera);
     }
+
+
+    sceneObjectsRef.current = {
+      scene,
+      windowLight,
+      ambientLight,
+      hemisphereLight,
+      paneMat,
+      motesMat,
+      standLight,
+      vanityLight,
+      fill,
+      fill2,
+      modeCfg: cfg,
+      baseIntensities: {
+        window: cfg.windowIntensity,
+        ambient: cfg.ambientIntensity,
+        hemi: cfg.hemiIntensity,
+        fill: cfg.fillIntensity,
+        fill2: cfg.fill2Intensity,
+        stand: cfg.standIntensity,
+        vanity: cfg.vanityIntensity,
+      },
+    };
+
     animate();
+
+    
 
     // ---------- cleanup ----------
     return () => {
+      sceneObjectsRef.current = null;
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener('pointermove', handlePointerMove);
@@ -643,6 +1007,43 @@ function NanisRoom({ onHotspotClick, className, style }) {
       }
     };
   }, []);
+
+  // Relight the existing scene whenever `mode` changes — no geometry rebuild,
+  // just colors and the base intensities the animate loop multiplies against
+  // the journey system's dimming factor each frame.
+  useEffect(() => {
+    const objs = sceneObjectsRef.current;
+    if (!objs) return;
+    const cfg = getModeConfig(mode);
+
+    objs.windowLight.color.set(cfg.windowColor);
+    objs.ambientLight.color.set(cfg.ambientColor);
+    objs.hemisphereLight.color.set(cfg.hemiSky);
+    objs.paneMat.color.set(cfg.paneColor);
+    objs.paneMat.opacity = cfg.paneOpacity;
+    objs.motesMat.opacity = cfg.moteOpacity;
+
+    objs.baseIntensities.window = cfg.windowIntensity;
+    objs.baseIntensities.ambient = cfg.ambientIntensity;
+    objs.baseIntensities.hemi = cfg.hemiIntensity;
+    objs.baseIntensities.fill = cfg.fillIntensity;
+    objs.baseIntensities.fill2 = cfg.fill2Intensity;
+    objs.baseIntensities.stand = cfg.standIntensity;
+    objs.baseIntensities.vanity = cfg.vanityIntensity;
+    lampBaseRef.current = cfg.lampIntensity;
+
+    objs.modeCfg = cfg;
+  }, [mode]);
+
+  // Keep the journey phase and collected-keepsakes set available to the
+  // running animate loop without ever rebuilding the scene.
+  useEffect(() => {
+    journeyPhaseRef.current = journeyPhase;
+  }, [journeyPhase]);
+
+  useEffect(() => {
+    collectedSetRef.current = new Set(collectedKeys);
+  }, [collectedKeys]);
 
   return (
     <div
@@ -674,15 +1075,10 @@ const memories = {
     title: 'The Painting',
     body: "She never said who painted it, only that it had hung in every house she'd ever lived in. The colours have deepened with the years, like everything else in this room.",
   },
-  saree: {
-    eyebrow: 'Folded with care',
-    title: 'The Silk Saree',
-    body: 'This saree came out for important days: weddings, festivals, and unexpected guests. Its border remembers every doorway she walked through wearing it.',
-  },
-  cassette: {
-    eyebrow: 'A voice from home',
-    title: 'The Old Cassette',
-    body: 'The tape is worn from listening. Press play and you can almost hear the old songs, the clatter of tea cups, and Auntie singing just a little louder than the music.',
+  photoAlbums: {
+    eyebrow: 'Every occasion, filed away',
+    title: 'The Photo Albums',
+    body: "A whole stack of them, spines cracked from being pulled out again and again. Every album has a decade, and every decade has a story attached that takes longer to tell than the photo took to develop.",
   },
   makeup: {
     eyebrow: 'Before stepping out',
@@ -694,22 +1090,43 @@ const memories = {
     title: 'The Amla Oil',
     body: "The smell alone brings it back — sitting on the floor while she worked it through your hair, telling you to stop fidgeting, promising it would make it grow long and strong.",
   },
+  radio: {
+    eyebrow: 'A familiar tune',
+    title: 'The Record Player',
+    body: "She kept the same handful of shabads on rotation, worn soft with replaying. Press play and the room fills the way it used to on quiet mornings.",
+  },
 };
+
+const TOTAL_KEEPSAKES = Object.keys(memories).length;
 
 function App() {
   const [openMemory, setOpenMemory] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef(null);
+  const [hasEntered, setHasEntered] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
+  const [mode, setMode] = useState('night');
+  const [collectedKeys, setCollectedKeys] = useState([]);
+  const [journeyPhase, setJourneyPhase] = useState('room');
+  const shabadAudioRef = useRef(null);
+  const endingTriggeredRef = useRef(false);
 
-  function toggleAmbientSound() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
-      return;
+  function toggleMode() {
+    setMode((m) => (m === 'night' ? 'day' : 'night'));
+  }
+
+  function handleHotspotClick(key) {
+    if (key === 'radio' && shabadAudioRef.current) {
+      const audio = shabadAudioRef.current;
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
     }
-    audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    setOpenMemory(key);
+    setCollectedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+  }
+
+  function handleRestartJourney() {
+    endingTriggeredRef.current = false;
+    setCollectedKeys([]);
+    setJourneyPhase('room');
   }
 
   useEffect(() => {
@@ -720,28 +1137,103 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Once every keepsake has been found, walk the room through its ending:
+  // furniture fades away, the lamp topples and the lights die, then the
+  // room settles into stillness for the reflection screen.
+  useEffect(() => {
+    if (
+      journeyPhase === 'room' &&
+      !openMemory &&
+      collectedKeys.length === TOTAL_KEEPSAKES &&
+      !endingTriggeredRef.current
+    ) {
+      endingTriggeredRef.current = true;
+      const toEmpty = setTimeout(() => setJourneyPhase('empty'), 1300);
+      const toDistort = setTimeout(() => setJourneyPhase('distort'), 1300 + 2600);
+      const toReflect = setTimeout(() => setJourneyPhase('reflect'), 1300 + 2600 + 1900);
+      return () => {
+        clearTimeout(toEmpty);
+        clearTimeout(toDistort);
+        clearTimeout(toReflect);
+      };
+    }
+  }, [collectedKeys, openMemory, journeyPhase]);
+
   const memory = openMemory ? memories[openMemory] : null;
 
   return (
     <main className="archive-shell">
+
+      {!hasEntered && (
+  <div className="splash-screen">
+    <div className="splash-content">
+      <p className="splash-kicker">
+        A DIGITAL MEMORY ARCHIVE
+      </p>
+
+      <h1>Nani's Room</h1>
+
+      <p className="splash-description">
+        Step inside a room filled with objects, memories,
+        sounds and stories.
+      </p>
+
+      <button
+        className="enter-room-btn"
+        type="button"
+        onClick={() => setHasEntered(true)}
+      >
+        Enter the room <span>→</span>
+      </button>
+
+      <p className="splash-small">
+        Best experienced with sound on
+      </p>
+    </div>
+  </div>
+)}
+
+      
       <div className="room-stage">
-        <NanisRoom onHotspotClick={setOpenMemory} />
+        <NanisRoom
+          onHotspotClick={handleHotspotClick}
+          mode={mode}
+          collectedKeys={collectedKeys}
+          journeyPhase={journeyPhase}
+        />
       </div>
-      <header className="archive-header">
+
+      {/* Shabad audio — plays when the record player hotspot is clicked.
+          Add your recording at public/assets/shabad.mp3 */}
+      <audio ref={shabadAudioRef} preload="none">
+        <source src="/assets/shabad.mp3" type="audio/mpeg" />
+      </audio>
+
+      <header className={`archive-header${journeyPhase !== 'room' ? ' is-fading' : ''}`}>
         <p className="archive-kicker">A digital memory archive</p>
         <h1>Nani's Room</h1>
         <p className="archive-prompt">Explore the room and listen closely.</p>
       </header>
-      <div className="audio-controller">
-        <button type="button" onClick={toggleAmbientSound} aria-pressed={isPlaying}>
-          <span aria-hidden="true">{isPlaying ? '◼' : '▶'}</span>
-          {isPlaying ? ' Pause ambience' : ' Play ambience'}
+
+      <div className="top-controls">
+        <button
+          className="glass-btn mode-toggle-btn"
+          type="button"
+          onClick={toggleMode}
+          aria-label={mode === 'night' ? 'Switch to day mode' : 'Switch to night mode'}
+          title={mode === 'night' ? 'Switch to day' : 'Switch to night'}
+        >
+          <span aria-hidden="true">{mode === 'night' ? '☾' : '☀'}</span>
         </button>
-        <audio ref={audioRef} loop preload="none">
-          <source src="/assets/ambient-room.mp3" type="audio/mpeg" />
-        </audio>
+        <button
+          className="glass-btn about-btn"
+          type="button"
+          onClick={() => setShowAbout(true)}
+        >
+          About
+        </button>
       </div>
-      <p className="archive-hint" aria-hidden="true">Drag to look around · Click a glowing keepsake</p>
+      <p className={`archive-hint${journeyPhase !== 'room' ? ' is-fading' : ''}`} aria-hidden="true">Drag to look around · Click a glowing keepsake</p>
       {memory && (
         <div className="modal-backdrop" role="presentation" onClick={() => setOpenMemory(null)}>
           <section className="memory-modal" role="dialog" aria-modal="true" aria-labelledby="memory-title" onClick={(event) => event.stopPropagation()}>
@@ -751,6 +1243,81 @@ function App() {
             <p className="memory-body">{memory.body}</p>
             <button className="return-btn" type="button" onClick={() => setOpenMemory(null)}>Return to the room</button>
           </section>
+        </div>
+      )}
+
+      {showAbout && (
+  <div
+    className="modal-backdrop"
+    role="presentation"
+    onClick={() => setShowAbout(false)}
+  >
+    <section
+      className="about-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="about-title"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <button
+        className="close-btn"
+        type="button"
+        onClick={() => setShowAbout(false)}
+        aria-label="Close about"
+      >
+        ×
+      </button>
+
+      <p className="memory-eyebrow">
+        ABOUT THE ARCHIVE
+      </p>
+
+      <h2 id="about-title">
+        Welcome to Nani's Room
+      </h2>
+
+      <p className="memory-body">
+        Nani's Room is an interactive digital memory archive
+        inspired by the objects, sounds and rituals that make up
+        a familiar family space.
+      </p>
+
+      <p className="memory-body">
+        Each object in the room holds a memory. Explore the space,
+        click the glowing keepsakes and listen closely.
+      </p>
+
+      <button
+        className="return-btn"
+        type="button"
+        onClick={() => setShowAbout(false)}
+      >
+        Return to the room
+      </button>
+    </section>
+  </div>
+)}
+
+      {journeyPhase === 'reflect' && (
+        <div className="reflect-screen" role="dialog" aria-modal="true" aria-labelledby="reflect-title">
+          <div className="reflect-content">
+            <p className="memory-eyebrow">The room, emptied</p>
+            <h2 id="reflect-title">What Do We Hold Onto?</h2>
+            <p className="reflect-body">
+              Every object here was only ever a doorway — a bangle, a bottle
+              of amla oil, a record spinning the same handful of songs. The
+              room can empty. The things in it can go. What's left is
+              stranger and quieter than any of it: a feeling that returns,
+              uninvited, on an ordinary afternoon.
+            </p>
+            <p className="reflect-body">
+              Memory was never kept in the objects. It's kept in whoever
+              carries it forward.
+            </p>
+            <button className="return-btn" type="button" onClick={handleRestartJourney}>
+              Begin again
+            </button>
+          </div>
         </div>
       )}
     </main>
