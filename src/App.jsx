@@ -784,6 +784,8 @@ scene.add(playArrowGroup);
     // --- Record player: the stand's turntable, plays a shabad on click ---
     const radioGlow = addFloorGlow(standGroup, 0.34, teal);
     registerHotspot(standGroup, 'radio', radioGlow);
+    const radioHotspot = hotspots[hotspots.length - 1]; // used to fade the play arrow with it
+    radioHotspot.noVanishScale = true; // the record player stays in the room the whole time
 
     // ---------- decor that fades away once every keepsake has been found ----------
     // (the lamp is handled separately below — it stays lit and topples over
@@ -865,25 +867,36 @@ scene.add(playArrowGroup);
       }
       moteGeo.attributes.position.needsUpdate = true;
 
-      // ---------- keepsakes: idle pulse, or shrink away once collected ----------
+      // ---------- keepsakes: idle pulse, shrink away once collected, or grow
+      // back if "Begin again" resets them. The record player is exempt from
+      // shrinking — it stays put, only its glow ring fades once found.
       hotspots.forEach((h) => {
         if (!h.glow) return;
-        if (collectedSetRef.current.has(h.key)) h.collected = true;
+        const isCollected = collectedSetRef.current.has(h.key);
+        h.collected = isCollected;
+        const vanishTarget = isCollected ? 1 : 0;
+        h.vanishT = THREE.MathUtils.lerp(h.vanishT, vanishTarget, 0.09);
+        if (Math.abs(h.vanishT - vanishTarget) < 0.003) h.vanishT = vanishTarget;
 
-        if (h.collected) {
-          h.vanishT = Math.min(1, h.vanishT + 0.045);
-          const s = Math.max(1 - h.vanishT, 0.0001);
-          h.root.scale.setScalar(s);
-          h.glow.material.opacity = 0.5 * (1 - h.vanishT);
-          if (h.vanishT >= 1 && h.root.visible) h.root.visible = false;
-          return;
+        if (h.noVanishScale) {
+          h.root.visible = true;
+          h.root.scale.setScalar(1);
+        } else {
+          const visible = h.vanishT < 0.999;
+          h.root.visible = visible;
+          if (visible) h.root.scale.setScalar(Math.max(1 - h.vanishT, 0.0001));
         }
 
-        const isHovered = h.key === hoveredKey;
-        const pulse = 0.35 + Math.sin(t * 2.2 + h.baseY * 3) * 0.15;
-        h.glow.material.opacity = isHovered ? 0.85 : pulse;
-        const s = isHovered ? 1.15 : 1.0;
-        h.glow.scale.set(s, s, s);
+        if (isCollected) {
+          h.glow.material.opacity = 0.5 * (1 - h.vanishT);
+        } else {
+          const isHovered = h.key === hoveredKey;
+          const pulse = 0.35 + Math.sin(t * 2.2 + h.baseY * 3) * 0.15;
+          const reappear = 1 - h.vanishT;
+          h.glow.material.opacity = (isHovered ? 0.85 : pulse) * reappear;
+          const s = isHovered ? 1.15 : 1.0;
+          h.glow.scale.set(s, s, s);
+        }
       });
 
       // ---------- the room's arc: furniture fades, the lamp falls, light dies ----------
@@ -917,14 +930,13 @@ scene.add(playArrowGroup);
         const flicker = phase === 'distort'
           ? 0.35 + 0.65 * Math.abs(Math.sin(t * 17) * Math.sin(t * 5))
           : 1;
-        const radioGone = collectedSetRef.current.has('radio');
 
         windowLight.intensity = objs.baseIntensities.window * live.lightMultiplier * flicker;
         ambientLight.intensity = objs.baseIntensities.ambient * live.lightMultiplier;
         hemisphereLight.intensity = objs.baseIntensities.hemi * live.lightMultiplier;
         fill.intensity = objs.baseIntensities.fill * live.lightMultiplier;
         fill2.intensity = objs.baseIntensities.fill2 * live.lightMultiplier;
-        standLight.intensity = radioGone ? 0 : objs.baseIntensities.stand * live.lightMultiplier;
+        standLight.intensity = objs.baseIntensities.stand * live.lightMultiplier;
         vanityLight.intensity = objs.baseIntensities.vanity * live.lightMultiplier;
 
         if (live.shakeAmp > 0.0006) {
@@ -934,10 +946,18 @@ scene.add(playArrowGroup);
         }
       }
 
-          // Floating play arrow animation
-playArrowGroup.position.y = 1.65 + Math.sin(t * 2.5) * 0.06;
-playArrow.material.opacity = 0.65 + Math.sin(t * 2.5) * 0.2;
-playArrow.rotation.z = Math.sin(t * 1.5) * 0.04;
+          // Floating play arrow animation — fades and shrinks with the record
+          // player itself, instead of lingering after it's collected/gone.
+      const arrowFade = 1 - radioHotspot.vanishT;
+      if (arrowFade > 0.001) {
+        playArrowGroup.visible = true;
+        playArrowGroup.position.y = 1.65 + Math.sin(t * 2.5) * 0.06;
+        playArrowGroup.scale.setScalar(arrowFade);
+        playArrow.material.opacity = (0.65 + Math.sin(t * 2.5) * 0.2) * arrowFade;
+        playArrow.rotation.z = Math.sin(t * 1.5) * 0.04;
+      } else {
+        playArrowGroup.visible = false;
+      }
 
       // gentle platter spin, purely decorative
       platter.rotation.y += 0.01;
@@ -1058,42 +1078,42 @@ const memories = {
   jewellery: {
     eyebrow: 'A small treasure',
     title: 'The Jewellery Box',
-    body: 'The little box held more than gold. Every piece inside carried the warmth of a celebration, a blessing, or a story told across generations.',
+    body: 'The little box held more than gold. Some are rusty, some are broken, some you are eyeing up for future reference',
   },
   bangles: {
     eyebrow: 'Catching the light',
     title: 'The Box of Bangles',
-    body: "They clink together when you lift the lid, dozens of them nested inside one another. Auntie could tell you exactly which wedding each colour was bought for, and would, if you had an hour to spare.",
+    body: "They clink together when you lift the lid, dozens of them nested inside one another. Some are missing... you stole a few playing games when you younger.",
   },
   photograph: {
     eyebrow: 'A captured afternoon',
     title: 'The Framed Photograph',
-    body: 'Auntie kept this photograph where the light could find it. The faces are soft with age, but the happiness in the room still feels close enough to touch.',
+    body: 'Nani kept this photograph where the light could find it. The faces are soft with age.',
   },
   painting: {
     eyebrow: 'On the wall',
     title: 'The Painting',
-    body: "She never said who painted it, only that it had hung in every house she'd ever lived in. The colours have deepened with the years, like everything else in this room.",
+    body: "A picture with meaning? Or was it just on sale? Either way you were alwasy fond of it.",
   },
   photoAlbums: {
     eyebrow: 'Every occasion, filed away',
     title: 'The Photo Albums',
-    body: "A whole stack of them, spines cracked from being pulled out again and again. Every album has a decade, and every decade has a story attached that takes longer to tell than the photo took to develop.",
+    body: "A whole stack of them, spines cracked from being pulled out again and again. ",
   },
   makeup: {
     eyebrow: 'Before stepping out',
     title: 'The Makeup Box',
-    body: 'A little kajal, a dab of colour, the same routine every time — done from memory, without ever needing the mirror as much as she used it anyway.',
+    body: 'An eyeliner, and a few dried out lipsticks. She knew what she liked but the glam always made an appearance on her best days',
   },
   amlaOil: {
     eyebrow: 'Sunday mornings',
-    title: 'The Amla Oil',
-    body: "The smell alone brings it back — sitting on the floor while she worked it through your hair, telling you to stop fidgeting, promising it would make it grow long and strong.",
+    title: 'The Oil',
+    body: "The smell alone brings it back. Hair, face, shoulders - the ritual was always carried out on visits.",
   },
   radio: {
     eyebrow: 'A familiar tune',
     title: 'The Record Player',
-    body: "She kept the same handful of shabads on rotation, worn soft with replaying. Press play and the room fills the way it used to on quiet mornings.",
+    body: "She kept the same handful of shabads on rotation, worn soft with replaying. Press play.",
   },
 };
 
@@ -1127,6 +1147,10 @@ function App() {
     endingTriggeredRef.current = false;
     setCollectedKeys([]);
     setJourneyPhase('room');
+    if (shabadAudioRef.current) {
+      shabadAudioRef.current.pause();
+      shabadAudioRef.current.currentTime = 0;
+    }
   }
 
   useEffect(() => {
@@ -1140,14 +1164,20 @@ function App() {
   // Once every keepsake has been found, walk the room through its ending:
   // furniture fades away, the lamp topples and the lights die, then the
   // room settles into stillness for the reflection screen.
+  // NOTE: journeyPhase is deliberately NOT a dependency here — this effect
+  // itself changes journeyPhase via the timers below, and if it were a
+  // dependency, each phase change would re-run the effect and its cleanup
+  // would cancel the remaining timers before they ever fired.
   useEffect(() => {
     if (
-      journeyPhase === 'room' &&
       !openMemory &&
       collectedKeys.length === TOTAL_KEEPSAKES &&
       !endingTriggeredRef.current
     ) {
       endingTriggeredRef.current = true;
+      if (shabadAudioRef.current) {
+        shabadAudioRef.current.pause();
+      }
       const toEmpty = setTimeout(() => setJourneyPhase('empty'), 1300);
       const toDistort = setTimeout(() => setJourneyPhase('distort'), 1300 + 2600);
       const toReflect = setTimeout(() => setJourneyPhase('reflect'), 1300 + 2600 + 1900);
@@ -1157,7 +1187,7 @@ function App() {
         clearTimeout(toReflect);
       };
     }
-  }, [collectedKeys, openMemory, journeyPhase]);
+  }, [collectedKeys, openMemory]);
 
   const memory = openMemory ? memories[openMemory] : null;
 
@@ -1174,8 +1204,7 @@ function App() {
       <h1>Nani's Room</h1>
 
       <p className="splash-description">
-        Step inside a room filled with objects, memories,
-        sounds and stories.
+        Can you collect all 8 memories? Explore the room and click on objects to find out the stories behind them.
       </p>
 
       <button
@@ -1210,9 +1239,9 @@ function App() {
       </audio>
 
       <header className={`archive-header${journeyPhase !== 'room' ? ' is-fading' : ''}`}>
-        <p className="archive-kicker">A digital memory archive</p>
+        <p className="archive-kicker">A memory archive</p>
         <h1>Nani's Room</h1>
-        <p className="archive-prompt">Explore the room and listen closely.</p>
+        <p className="archive-prompt">Can you find all 8 objects</p>
       </header>
 
       <div className="top-controls">
@@ -1234,6 +1263,9 @@ function App() {
         </button>
       </div>
       <p className={`archive-hint${journeyPhase !== 'room' ? ' is-fading' : ''}`} aria-hidden="true">Drag to look around · Click a glowing keepsake</p>
+      <p className={`keepsake-tally${journeyPhase !== 'room' ? ' is-fading' : ''}`} aria-hidden="true">
+        <span className="tally-count">{collectedKeys.length}</span> / {TOTAL_KEEPSAKES} memories found
+      </p>
       {memory && (
         <div className="modal-backdrop" role="presentation" onClick={() => setOpenMemory(null)}>
           <section className="memory-modal" role="dialog" aria-modal="true" aria-labelledby="memory-title" onClick={(event) => event.stopPropagation()}>
@@ -1277,14 +1309,16 @@ function App() {
       </h2>
 
       <p className="memory-body">
-        Nani's Room is an interactive digital memory archive
-        inspired by the objects, sounds and rituals that make up
-        a familiar family space.
+        What does home feel like to you?
+
+Is it a house? A person? Certain objects, sounds, or music? Or is it the way all of these things come together to remind you of somewhere or someone you belong to?
+
+Have you ever found yourself yearning for a version of home that no longer exists, or perhaps one that only exists in your memories?
       </p>
 
       <p className="memory-body">
         Each object in the room holds a memory. Explore the space,
-        click the glowing keepsakes and listen closely.
+        click the glowing keepsakes and listen closely. Start with the record player, and let the shabad guide you through the room.
       </p>
 
       <button
@@ -1302,17 +1336,16 @@ function App() {
         <div className="reflect-screen" role="dialog" aria-modal="true" aria-labelledby="reflect-title">
           <div className="reflect-content">
             <p className="memory-eyebrow">The room, emptied</p>
-            <h2 id="reflect-title">What Do We Hold Onto?</h2>
+            <h2 id="reflect-title">Are the Memories Gone?</h2>
             <p className="reflect-body">
-              Every object here was only ever a doorway — a bangle, a bottle
-              of amla oil, a record spinning the same handful of songs. The
-              room can empty. The things in it can go. What's left is
-              stranger and quieter than any of it: a feeling that returns,
-              uninvited, on an ordinary afternoon.
+              Every object here: a bangle, a bottle of oil, a familiar tune held nothing on its own.
+              They were only ever doorways. The room could be emptied. The
+              light could go out.
             </p>
-            <p className="reflect-body">
-              Memory was never kept in the objects. It's kept in whoever
-              carries it forward.
+            <p className="reflect-question">
+              So now that it has, are the memories gone?
+              <br />
+              Or are they still with you?
             </p>
             <button className="return-btn" type="button" onClick={handleRestartJourney}>
               Begin again

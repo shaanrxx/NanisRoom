@@ -456,6 +456,30 @@ body {
     opacity: 0;
 }
 
+.keepsake-tally {
+    position: fixed;
+    left: clamp(1.25rem, 5vw, 5rem);
+    bottom: 1.6rem;
+    z-index: 2;
+    margin: 0;
+    pointer-events: none;
+    color: rgba(244, 233, 216, 0.75);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    opacity: 1;
+    transition: opacity 1.6s ease;
+}
+
+.keepsake-tally.is-fading {
+    opacity: 0;
+}
+
+.tally-count {
+    color: #ffb877;
+    font-weight: 600;
+}
+
 .return-btn {
     border: 1px solid rgba(255, 184, 119, 0.6);
     border-radius: 999px;
@@ -566,6 +590,15 @@ body {
     font-size: 0.98rem;
     line-height: 1.85;
     margin-bottom: 1.4rem;
+}
+
+.reflect-question {
+    color: #f4e9d8;
+    font-family: 'Rozha One', 'Cormorant Garamond', Georgia, serif;
+    font-size: clamp(1.2rem, 3.2vw, 1.65rem);
+    font-weight: 400;
+    line-height: 1.5;
+    margin: 1.6rem 0 2rem;
 }
 
 .reflect-content .return-btn {
