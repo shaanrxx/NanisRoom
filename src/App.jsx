@@ -814,7 +814,7 @@ scene.add(playArrowGroup);
     function pickHotspot() {
       if (journeyPhaseRef.current !== 'room') return null;
       raycaster.setFromCamera(pointer, camera);
-      const targets = hotspots.filter((h) => !h.collected).map((h) => h.root);
+      const targets = hotspots.filter((h) => !h.collected || h.noVanishScale).map((h) => h.root);
       if (targets.length === 0) return null;
       const hits = raycaster.intersectObjects(targets, true);
       if (hits.length === 0) return null;
@@ -869,12 +869,14 @@ scene.add(playArrowGroup);
 
       // ---------- keepsakes: idle pulse, shrink away once collected, or grow
       // back if "Begin again" resets them. The record player is exempt from
-      // shrinking — it stays put, only its glow ring fades once found.
+      // both — it stays put AND keeps pulsing, so it's clear you can click
+      // it again anytime before the room empties.
       hotspots.forEach((h) => {
         if (!h.glow) return;
         const isCollected = collectedSetRef.current.has(h.key);
         h.collected = isCollected;
-        const vanishTarget = isCollected ? 1 : 0;
+        const staysInviting = h.noVanishScale;
+        const vanishTarget = isCollected && !staysInviting ? 1 : 0;
         h.vanishT = THREE.MathUtils.lerp(h.vanishT, vanishTarget, 0.09);
         if (Math.abs(h.vanishT - vanishTarget) < 0.003) h.vanishT = vanishTarget;
 
@@ -887,7 +889,7 @@ scene.add(playArrowGroup);
           if (visible) h.root.scale.setScalar(Math.max(1 - h.vanishT, 0.0001));
         }
 
-        if (isCollected) {
+        if (isCollected && !staysInviting) {
           h.glow.material.opacity = 0.5 * (1 - h.vanishT);
         } else {
           const isHovered = h.key === hoveredKey;
@@ -1069,7 +1071,13 @@ scene.add(playArrowGroup);
     <div
       ref={mountRef}
       className={className}
-      style={{ width: '100%', height: '100%', background: '#362a2d', ...style }}
+      style={{
+        width: '100%',
+        height: '100%',
+        background: '#362a2d',
+        touchAction: 'none',
+        ...style,
+      }}
     />
   );
 }
@@ -1078,42 +1086,42 @@ const memories = {
   jewellery: {
     eyebrow: 'A small treasure',
     title: 'The Jewellery Box',
-    body: 'The little box held more than gold. Some are rusty, some are broken, some you are eyeing up for future reference',
+    body: 'The little box held more than gold. Every piece inside carried the warmth of a celebration, a blessing, or a story told across generations.',
   },
   bangles: {
     eyebrow: 'Catching the light',
     title: 'The Box of Bangles',
-    body: "They clink together when you lift the lid, dozens of them nested inside one another. Some are missing... you stole a few playing games when you younger.",
+    body: "They clink together when you lift the lid, dozens of them nested inside one another. Auntie could tell you exactly which wedding each colour was bought for, and would, if you had an hour to spare.",
   },
   photograph: {
     eyebrow: 'A captured afternoon',
     title: 'The Framed Photograph',
-    body: 'Nani kept this photograph where the light could find it. The faces are soft with age.',
+    body: 'Auntie kept this photograph where the light could find it. The faces are soft with age, but the happiness in the room still feels close enough to touch.',
   },
   painting: {
     eyebrow: 'On the wall',
     title: 'The Painting',
-    body: "A picture with meaning? Or was it just on sale? Either way you were alwasy fond of it.",
+    body: "She never said who painted it, only that it had hung in every house she'd ever lived in. The colours have deepened with the years, like everything else in this room.",
   },
   photoAlbums: {
     eyebrow: 'Every occasion, filed away',
     title: 'The Photo Albums',
-    body: "A whole stack of them, spines cracked from being pulled out again and again. ",
+    body: "A whole stack of them, spines cracked from being pulled out again and again. Every album has a decade, and every decade has a story attached that takes longer to tell than the photo took to develop.",
   },
   makeup: {
     eyebrow: 'Before stepping out',
     title: 'The Makeup Box',
-    body: 'An eyeliner, and a few dried out lipsticks. She knew what she liked but the glam always made an appearance on her best days',
+    body: 'A little kajal, a dab of colour, the same routine every time — done from memory, without ever needing the mirror as much as she used it anyway.',
   },
   amlaOil: {
     eyebrow: 'Sunday mornings',
-    title: 'The Oil',
-    body: "The smell alone brings it back. Hair, face, shoulders - the ritual was always carried out on visits.",
+    title: 'The Amla Oil',
+    body: "The smell alone brings it back — sitting on the floor while she worked it through your hair, telling you to stop fidgeting, promising it would make it grow long and strong.",
   },
   radio: {
     eyebrow: 'A familiar tune',
     title: 'The Record Player',
-    body: "She kept the same handful of shabads on rotation, worn soft with replaying. Press play.",
+    body: "She kept the same handful of shabads on rotation, worn soft with replaying. Press play and the room fills the way it used to on quiet mornings.",
   },
 };
 
@@ -1126,6 +1134,9 @@ function App() {
   const [mode, setMode] = useState('night');
   const [collectedKeys, setCollectedKeys] = useState([]);
   const [journeyPhase, setJourneyPhase] = useState('room');
+  const [musicOn, setMusicOn] = useState(false);
+  const [musicStarted, setMusicStarted] = useState(false);
+  const [volume, setVolume] = useState(0.8);
   const shabadAudioRef = useRef(null);
   const endingTriggeredRef = useRef(false);
 
@@ -1133,11 +1144,27 @@ function App() {
     setMode((m) => (m === 'night' ? 'day' : 'night'));
   }
 
+  function toggleMusic() {
+    const audio = shabadAudioRef.current;
+    if (!audio) return;
+    if (musicOn) {
+      audio.pause();
+      setMusicOn(false);
+    } else {
+      audio.play().then(() => setMusicOn(true)).catch((err) => {
+        console.warn('Shabad playback failed:', err);
+      });
+    }
+  }
+
   function handleHotspotClick(key) {
     if (key === 'radio' && shabadAudioRef.current) {
       const audio = shabadAudioRef.current;
       audio.currentTime = 0;
-      audio.play().catch(() => {});
+      audio.play().then(() => setMusicOn(true)).catch((err) => {
+        console.warn('Shabad playback failed:', err);
+      });
+      setMusicStarted(true);
     }
     setOpenMemory(key);
     setCollectedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
@@ -1147,11 +1174,19 @@ function App() {
     endingTriggeredRef.current = false;
     setCollectedKeys([]);
     setJourneyPhase('room');
+    setMusicOn(false);
+    setMusicStarted(false);
     if (shabadAudioRef.current) {
       shabadAudioRef.current.pause();
       shabadAudioRef.current.currentTime = 0;
     }
   }
+
+  useEffect(() => {
+    if (shabadAudioRef.current) {
+      shabadAudioRef.current.volume = volume;
+    }
+  }, [volume]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -1178,6 +1213,7 @@ function App() {
       if (shabadAudioRef.current) {
         shabadAudioRef.current.pause();
       }
+      setMusicOn(false);
       const toEmpty = setTimeout(() => setJourneyPhase('empty'), 1300);
       const toDistort = setTimeout(() => setJourneyPhase('distort'), 1300 + 2600);
       const toReflect = setTimeout(() => setJourneyPhase('reflect'), 1300 + 2600 + 1900);
@@ -1204,7 +1240,9 @@ function App() {
       <h1>Nani's Room</h1>
 
       <p className="splash-description">
-        Can you collect all 8 memories? Explore the room and click on objects to find out the stories behind them.
+        Can you collect all 8 memories and their stories? Drag around the
+        room to find the objects. Start with the record player to help
+        guide you round the room with a traditional song.
       </p>
 
       <button
@@ -1233,18 +1271,32 @@ function App() {
       </div>
 
       {/* Shabad audio — plays when the record player hotspot is clicked.
-          Add your recording at public/assets/shabad.mp3 */}
-      <audio ref={shabadAudioRef} preload="none">
+          File lives at public/assets/shabad.mp3 */}
+      <audio ref={shabadAudioRef} preload="none" loop>
         <source src="/assets/shabad.mp3" type="audio/mpeg" />
       </audio>
 
       <header className={`archive-header${journeyPhase !== 'room' ? ' is-fading' : ''}`}>
-        <p className="archive-kicker">A memory archive</p>
+        <p className="archive-kicker">A digital memory archive</p>
         <h1>Nani's Room</h1>
-        <p className="archive-prompt">Can you find all 8 objects</p>
+        <p className="archive-prompt">Explore the room and listen closely.</p>
       </header>
 
       <div className="top-controls">
+        {musicStarted && (
+          <button
+            className={`glass-btn music-toggle-btn${journeyPhase !== 'room' ? ' is-fading' : ''}`}
+            type="button"
+            onClick={toggleMusic}
+            disabled={journeyPhase !== 'room'}
+            aria-pressed={musicOn}
+            aria-label={musicOn ? 'Turn music off' : 'Turn music on'}
+            title={musicOn ? 'Turn music off' : 'Turn music on'}
+          >
+            <span className={`music-dot${musicOn ? ' is-on' : ''}`} aria-hidden="true" />
+            Music {musicOn ? 'On' : 'Off'}
+          </button>
+        )}
         <button
           className="glass-btn mode-toggle-btn"
           type="button"
@@ -1266,13 +1318,78 @@ function App() {
       <p className={`keepsake-tally${journeyPhase !== 'room' ? ' is-fading' : ''}`} aria-hidden="true">
         <span className="tally-count">{collectedKeys.length}</span> / {TOTAL_KEEPSAKES} memories found
       </p>
-      {memory && (
+      {memory && openMemory !== 'radio' && (
         <div className="modal-backdrop" role="presentation" onClick={() => setOpenMemory(null)}>
           <section className="memory-modal" role="dialog" aria-modal="true" aria-labelledby="memory-title" onClick={(event) => event.stopPropagation()}>
             <button className="close-btn" type="button" onClick={() => setOpenMemory(null)} aria-label="Close memory">×</button>
             <p className="memory-eyebrow">{memory.eyebrow}</p>
             <h2 id="memory-title">{memory.title}</h2>
             <p className="memory-body">{memory.body}</p>
+            <button className="return-btn" type="button" onClick={() => setOpenMemory(null)}>Return to the room</button>
+          </section>
+        </div>
+      )}
+
+      {openMemory === 'radio' && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setOpenMemory(null)}>
+          <section
+            className="record-player-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="record-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button className="close-btn" type="button" onClick={() => setOpenMemory(null)} aria-label="Close">×</button>
+            <p className="memory-eyebrow">{memories.radio.eyebrow}</p>
+            <h2 id="record-title">{memories.radio.title}</h2>
+
+            <div className="record-player-plan">
+              <svg viewBox="0 0 200 200" className={`record-plan-svg${musicOn ? ' is-spinning' : ''}`} aria-hidden="true">
+                <circle cx="100" cy="100" r="96" className="rp-base" />
+                <circle cx="100" cy="100" r="96" className="rp-base-ring" />
+                <g className="record-disc">
+                  <circle cx="100" cy="100" r="80" className="rp-disc" />
+                  <circle cx="100" cy="100" r="64" className="rp-groove" />
+                  <circle cx="100" cy="100" r="49" className="rp-groove" />
+                  <circle cx="100" cy="100" r="34" className="rp-groove" />
+                  <circle cx="100" cy="100" r="17" className="rp-label" />
+                  <circle cx="100" cy="100" r="2.5" className="rp-spindle" />
+                </g>
+                <g className="tonearm">
+                  <circle cx="166" cy="42" r="7" className="rp-arm-pivot" />
+                  <line x1="166" y1="42" x2="118" y2="94" className="rp-arm" />
+                  <circle cx="118" cy="94" r="3.5" className="rp-arm-tip" />
+                </g>
+              </svg>
+            </div>
+
+            <p className="memory-body">{memories.radio.body}</p>
+
+            <div className="record-player-controls">
+              <button
+                className="return-btn play-pause-btn"
+                type="button"
+                onClick={toggleMusic}
+                aria-pressed={musicOn}
+              >
+                {musicOn ? '❚❚ Pause' : '▶ Play'}
+              </button>
+              <label className="volume-control">
+                <span className="volume-label">
+                  Volume <span className="volume-value">{Math.round(volume * 100)}%</span>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={volume}
+                  onChange={(event) => setVolume(Number(event.target.value))}
+                  aria-label="Volume"
+                />
+              </label>
+            </div>
+
             <button className="return-btn" type="button" onClick={() => setOpenMemory(null)}>Return to the room</button>
           </section>
         </div>
@@ -1309,16 +1426,27 @@ function App() {
       </h2>
 
       <p className="memory-body">
-        What does home feel like to you?
+        What does home feel like to you? Is it a house? A person? Certain
+        objects, sounds, or music? Or is it the way all of these things
+        come together to remind you of somewhere — or someone — you
+        belong to?
+      </p>
 
-Is it a house? A person? Certain objects, sounds, or music? Or is it the way all of these things come together to remind you of somewhere or someone you belong to?
+      <p className="memory-body">
+        Has your idea of home changed as you've grown older? Have you
+        ever found yourself yearning for a version of home that no
+        longer exists, or perhaps one that only exists in your memories?
+      </p>
 
-Have you ever found yourself yearning for a version of home that no longer exists, or perhaps one that only exists in your memories?
+      <p className="memory-body">
+        Nani's Room is an immersive digital space that explores memory,
+        nostalgia, and the meaning of home within a British Asian
+        experience.
       </p>
 
       <p className="memory-body">
         Each object in the room holds a memory. Explore the space,
-        click the glowing keepsakes and listen closely. Start with the record player, and let the shabad guide you through the room.
+        click the glowing keepsakes and listen closely.
       </p>
 
       <button
@@ -1338,14 +1466,15 @@ Have you ever found yourself yearning for a version of home that no longer exist
             <p className="memory-eyebrow">The room, emptied</p>
             <h2 id="reflect-title">Are the Memories Gone?</h2>
             <p className="reflect-body">
-              Every object here: a bangle, a bottle of oil, a familiar tune held nothing on its own.
+              Every object here; a bangle, a bottle of oil, a record
+              spinning the same song held nothing on its own.
               They were only ever doorways. The room could be emptied. The
               light could go out.
             </p>
             <p className="reflect-question">
-              So now that it has, are the memories gone?
+              So now that it has, where do the memories go?
               <br />
-              Or are they still with you?
+              Are they still with you?
             </p>
             <button className="return-btn" type="button" onClick={handleRestartJourney}>
               Begin again
