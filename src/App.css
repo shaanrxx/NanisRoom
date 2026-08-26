@@ -251,9 +251,7 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    
-    /* Make sure this points to your file correctly! */
-    background-image: url('./assets/room-bg.jpg');
+    background-image: url('./assets/hero.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;

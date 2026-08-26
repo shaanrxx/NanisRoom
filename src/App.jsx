@@ -1270,10 +1270,9 @@ function App() {
         />
       </div>
 
-      {/* Shabad audio — plays when the record player hotspot is clicked.
-          File lives at public/assets/shabad.mp3 */}
+      {/* Shabad audio — plays when the record player hotspot is clicked. */}
       <audio ref={shabadAudioRef} preload="none" loop>
-        <source src="/assets/shabad.mp3" type="audio/mpeg" />
+        <source src={`${import.meta.env.BASE_URL}assets/shabad.mp3`} type="audio/mpeg" />
       </audio>
 
       <header className={`archive-header${journeyPhase !== 'room' ? ' is-fading' : ''}`}>
