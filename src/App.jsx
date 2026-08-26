@@ -1086,42 +1086,42 @@ const memories = {
   jewellery: {
     eyebrow: 'A small treasure',
     title: 'The Jewellery Box',
-    body: 'The little box held more than gold. Every piece inside carried the warmth of a celebration, a blessing, or a story told across generations.',
+    body: 'The little box held more than gold. Some are rusty, some are broken, some you are eyeing up for future reference',
   },
   bangles: {
     eyebrow: 'Catching the light',
     title: 'The Box of Bangles',
-    body: "They clink together when you lift the lid, dozens of them nested inside one another. Auntie could tell you exactly which wedding each colour was bought for, and would, if you had an hour to spare.",
+    body: "They clink together when you lift the lid, dozens of them nested inside one another. Some are missing... you stole a few playing games when you younger.",
   },
   photograph: {
     eyebrow: 'A captured afternoon',
     title: 'The Framed Photograph',
-    body: 'Auntie kept this photograph where the light could find it. The faces are soft with age, but the happiness in the room still feels close enough to touch.',
+    body: 'Nani kept this photograph where the light could find it. The faces are soft with age.',
   },
   painting: {
     eyebrow: 'On the wall',
     title: 'The Painting',
-    body: "She never said who painted it, only that it had hung in every house she'd ever lived in. The colours have deepened with the years, like everything else in this room.",
+    body: "Was it a picture with meaning? Or was it just on sale? Eother way it always something to look at.",
   },
   photoAlbums: {
     eyebrow: 'Every occasion, filed away',
     title: 'The Photo Albums',
-    body: "A whole stack of them, spines cracked from being pulled out again and again. Every album has a decade, and every decade has a story attached that takes longer to tell than the photo took to develop.",
+    body: "A whole stack of them, spines cracked from being pulled out again and again.",
   },
   makeup: {
     eyebrow: 'Before stepping out',
     title: 'The Makeup Box',
-    body: 'A little kajal, a dab of colour, the same routine every time — done from memory, without ever needing the mirror as much as she used it anyway.',
+    body: 'An eyeliner, and a few dried out lipsticks. She knew what she liked but the glam always made an appearance on her best days',
   },
   amlaOil: {
     eyebrow: 'Sunday mornings',
-    title: 'The Amla Oil',
-    body: "The smell alone brings it back — sitting on the floor while she worked it through your hair, telling you to stop fidgeting, promising it would make it grow long and strong.",
+    title: 'The Oil',
+    body: "The smell alone brings it back. Hair, face, shoulders. The ritual was always carried out on visits.",
   },
   radio: {
     eyebrow: 'A familiar tune',
     title: 'The Record Player',
-    body: "She kept the same handful of shabads on rotation, worn soft with replaying. Press play and the room fills the way it used to on quiet mornings.",
+    body: "She kept the same handful of shabads on rotation. Press play to listen.",
   },
 };
 
